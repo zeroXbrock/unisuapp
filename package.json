@@ -7,5 +7,9 @@
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@flashbots/suave-viem": "^1.14.3",
+    "dotenv": "^16.4.5"
   }
 }
