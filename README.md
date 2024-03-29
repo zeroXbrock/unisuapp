@@ -1,66 +1,69 @@
-## Foundry
+# uniswap-v2-intents-goerli
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+A SUAPP featuring a simple intent-based public mempool and solver-driven intent execution. The example is limited to Uniswap V2, but the protocol can easily be extended to other exchanges. Solvers' bundles are sent only when their bundle passes simulation.
 
-Foundry consists of:
+This example sends the user's private key over the wire via confidentialInputs. This is not a sound design; it's just simpler for the sake of demonstration. The key is only ever seen by the MEVM, and is used to sign transactions on behalf of the user. That said, it's strongly recommended to use a burner account if you want to run this yourself.
 
--   **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
--   **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
--   **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
--   **Chisel**: Fast, utilitarian, and verbose solidity REPL.
+> This example connects to the live SUAVE Rigil Testnet, and Goerli. To run this example, make sure you have at least 0.1 testnet ETH in both networks.
 
-## Documentation
+## instructions
 
-https://book.getfoundry.sh/
+To install dependencies:
 
-## Usage
-
-### Build
-
-```shell
-$ forge build
+```bash
+bun install
 ```
 
-### Test
+Setup .env:
 
-```shell
-$ forge test
+```bash
+cp .env.example .env
+
+# populate GOERLI_KEY and SUAVE_KEY in .env
+# other var(s) optional
+vim .env
 ```
 
-### Format
+Run the example:
 
-```shell
-$ forge fmt
+```bash
+bun run index.ts
 ```
 
-### Gas Snapshots
+_To deploy new contracts before running:_
 
-```shell
-$ forge snapshot
+```bash
+DEPLOY=true bun run index.ts
 ```
 
-### Anvil
+_Alternatively, deploy a new contract with forge:_
 
-```shell
-$ anvil
+```bash
+# run from project root
+cd ../..
+# load .env into shell to make $SUAVE_KEY available
+source .env
+# deploy Intents contract
+forge create --legacy --private-key $SUAVE_KEY --rpc-url https://rpc.rigil.suave.flashbots.net examples/uniswap-v2-intents-goerli/contracts/Intents.sol:Intents
 ```
 
-### Deploy
+This project was created using `bun init` in bun v1.0.23. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
 
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
+## notes
 
-### Cast
+*Some notes on intents and ideas to improve the current design:*
 
-```shell
-$ cast <subcommand>
-```
+- generate the user's private key in a smart contract and store the private key in confidential storage, so it never leaves the MEVM+CStore
+  - user or solver provides a signed transaction to fund the new account, which is placed at the front of the bundle
+- check for inclusion onchain
+  - check for a tx receipt from a reliable source to prove inclusion
 
-### Help
+    RPC URL will have to exist somewhere on suave chain. May be worthwhile to write an API registry contract there so that SUAPPS don't have to re-deploy contracts when an address changes. Naturally, since we want to update the registry over time, someone/something will control the registry. To make sure you don't get rekt, you either have to (A) trust the controller not to act maliciously, or (B) implement multi-sig/governance ownership on the contract, and trust the elected governors not to collude.
+  - consider using merkle proofs instead of tx receipts for larger-scale inclusion checks
+- add a reimbursement mechanism to pay solvers
+  - write an L1 contract that uses EIP712 signatures to reimburse the solver.
 
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
+    The signature is passed with confidentialInputs and is not revealed except when landed in a bundle.
+    This allows us to program the recipient (solver) into the reimbursement function without requiring the recipient address to be encoded in the EIP712 struct, which is important because the user doesn't know who the solver is going to be ahead of time.
+  - use inclusion proof to trigger solver reimbursement
+    - It may not be possible to send bundles and check for inclusion atomically at the moment. This may change with pending parallelization developments on SUAVE.
