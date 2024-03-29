@@ -6,12 +6,19 @@ This example sends the user's private key over the wire via confidentialInputs. 
 
 > This example connects to the live SUAVE Rigil Testnet, and Goerli. To run this example, make sure you have at least 0.1 testnet ETH in both networks.
 
+**System Dependencies:**
+
+- [bun](https://bun.sh)
+- [foundry](https://getfoundry.sh)
+- you'll also need accounts on eth-goerli and suave-rigil, each with 0.1+ ether
+
 ## instructions
 
 To install dependencies:
 
 ```bash
 bun install
+forge build
 ```
 
 Setup .env:
