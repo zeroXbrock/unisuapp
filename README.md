@@ -39,12 +39,10 @@ DEPLOY=true bun run index.ts
 _Alternatively, deploy a new contract with forge:_
 
 ```bash
-# run from project root
-cd ../..
 # load .env into shell to make $SUAVE_KEY available
 source .env
 # deploy Intents contract
-forge create --legacy --private-key $SUAVE_KEY --rpc-url https://rpc.rigil.suave.flashbots.net examples/uniswap-v2-intents-goerli/contracts/Intents.sol:Intents
+forge create --legacy --private-key $SUAVE_KEY --rpc-url https://rpc.rigil.suave.flashbots.net src/Intents.sol:Intents
 ```
 
 This project was created using `bun init` in bun v1.0.23. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
