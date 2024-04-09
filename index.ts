@@ -226,8 +226,21 @@ async function testIntents<T extends Transport>(
 	console.log("fulfillIntent txRequest", txRequest);
 
 	// send the CCR
-	const fulfillIntentTxHash = await suaveWallet.sendTransaction(txRequest);
-	console.log("fulfillIntentTxHash", fulfillIntentTxHash);
+	let fulfillIntentTxHash: Hex = "0x";
+	for (let i = 0; i < 3; i++) {
+		try {
+			fulfillIntentTxHash = await suaveWallet.sendTransaction(txRequest)
+			console.log("fulfillIntentTxHash", fulfillIntentTxHash)
+			break
+		} catch (_) {
+			console.warn("failed to send fulfillIntent tx, retrying...")
+			// sleep for 1 second
+			await new Promise((resolve) => setTimeout(resolve, 1000))
+		}
+	}
+	if (fulfillIntentTxHash === "0x") {
+		throw new Error("failed to send fulfillIntent tx");
+	}
 
 	// wait for tx receipt, then log it
 	const fulfillIntentReceipt = await suaveProvider.waitForTransactionReceipt({
@@ -334,12 +347,29 @@ async function main() {
 	console.log("wethBalance", formatEther(wethBalance));
 	const minBalance = parseEther("0.1");
 	if (wethBalance < minBalance) {
-		console.log("topping up WETH");
-		const txHash = await getWeth(minBalance, l1Wallet, l1Provider, l1Context);
-		console.log(`got ${minBalance} weth`, txHash);
+		console.log("topping up WETH")
+		const txHash = await getWeth(minBalance, l1Wallet, l1Provider, l1Context)
+		console.log(`got ${minBalance} weth`, txHash)
 		// wait for 12 seconds for the tx to land
-		console.log("waiting for 12 seconds for tx to land on L1");
-		await new Promise((resolve) => setTimeout(resolve, 12000));
+		console.log("waiting for tx to land on L1...")
+		let attempts = 0
+		while (true) {
+			try {
+				const receipt = await l1Provider.getTransactionReceipt({
+					hash: txHash,
+				})
+				if (receipt.status === "success") {
+					console.log("tx landed")
+					break
+				}
+			} catch (_) {
+				if (attempts > 13) {
+					throw new Error("tx failed to land")
+				}
+				attempts++
+				await new Promise((resolve) => setTimeout(resolve, 1000))
+			}
+		}
 	}
 
 	// run test script
