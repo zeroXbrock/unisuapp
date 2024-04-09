@@ -39,9 +39,9 @@ contract Intents {
     // we probably shouldn't be storing intents in contract storage
     // TODO: make a stateless or ConfidentialStore-based design
     mapping(bytes32 => LimitOrderPublic) public intentsPending;
-    string public constant GOERLI_BUNDLE_RPC =
-        "https://relay-goerli.flashbots.net";
-    string public constant GOERLI_ETH_RPC = "https://rpc-goerli.flashbots.net";
+    string public constant L1_BUNDLE_RPC =
+        "https://relay-mainnet.flashbots.net";
+    string public constant L1_ETH_RPC = "https://rpc.flashbots.net";
     bytes2 public constant TX_PLACEHOLDER = 0xf00d;
     uint8 private immutable NUM_TARGET_BLOCKS = 10;
 
@@ -168,12 +168,13 @@ contract Intents {
 
     // function checkTransactionReceipt(bytes32 txHash) internal view returns (bool) {
     //     Suave.HttpRequest memory req =
-    //         Suave.HttpRequest({url: GOERLI_ETH_RPC, method: "POST", headers: "", body: bundleRes});
+    //         Suave.HttpRequest({url: L1_ETH_RPC, method: "POST", headers: "", body: bundleRes});
     //     Suave.doHTTPRequest(request);
     // }
 
     /// Triggered when an intent is fulfilled via `fulfillIntent`.
     function onFulfillIntent(bytes32 orderId, bytes memory bundleRes) public {
+        require(Suave.isConfidential(), "must call confidentially");
         delete intentsPending[orderId];
         emit IntentFulfilled(orderId, bundleRes);
     }
@@ -265,10 +266,9 @@ contract Intents {
             });
             // returns effective gas price (egp) for the bundle
             uint256 egp = uint256(bundleObj.simulateBundle());
-            require(egp > 0, "sim failed");
             egps[i] = egp;
-            if (egp > 1000000) {
-                bundleRes = bundleObj.sendBundle(GOERLI_BUNDLE_RPC);
+            if (egp > 9) {
+                bundleRes = bundleObj.sendBundle(L1_BUNDLE_RPC);
                 require(
                     // this hex is '{"id":1,"result":{"bundleHash":"'
                     // close-enough way to check for successful sendBundle call
