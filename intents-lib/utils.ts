@@ -37,7 +37,7 @@ export const chainContext = (id: number) => {
 		case 5:
 			return {name: "goerli", contracts: ChainContext.goerli};
 		case 17000:
-			throw new Error("chainContext not yet implemented for holesky");
+			return {name: "holesky", contracts: ChainContext.holesky};
 		default:
 			throw new Error("invalid chain ID");
 	}

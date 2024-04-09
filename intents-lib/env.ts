@@ -1,10 +1,35 @@
 import dotenv from "dotenv";
 import path from "path";
 import { chainContext } from './utils';
+import fs from "fs";
 
-dotenv.config({
-	path: path.resolve(import.meta.dir, "../../../.env"),
-});
+const defaultEnvFiles = [
+	".env",
+	".env.local",
+];
+function envPath(filename: string) {
+	return path.resolve(import.meta.dir, `../${filename}`)
+}
+
+let envFilePath = "";
+if (process.env.APP_ENV) {
+	console.debug("APP_ENV", process.env.APP_ENV);
+	envFilePath = envPath(`.env.${process.env.APP_ENV}`);
+} else {
+	for (const fp of defaultEnvFiles) {
+		const fullPath = envPath(fp)
+		if (fs.existsSync(fullPath)) {
+			console.debug(`found env file ${fp}`);
+			envFilePath = fullPath;
+			break;
+		}
+	}
+}
+
+if (!envFilePath || !fs.existsSync(envFilePath)) {
+	throw new Error("dotenv file not found. specify a .env.X suffix with APP_ENV=X");
+}
+console.debug(`loading env from ${envFilePath}`);
 
 /// prepend 0x if var exists and 0x is not present
 function prefix0x (hex?: string) {
@@ -15,19 +40,27 @@ function prefix0x (hex?: string) {
 }
 
 function loadEnv() {
-	const L1_CHAIN_ID = parseInt(process.env.L1_CHAIN_ID || "17000");
-	const L1_KEY = prefix0x(process.env.L1_KEY);
-	const SUAVE_KEY = prefix0x(process.env.SUAVE_KEY);
-	
-	if (!process.env.L1_RPC_URL) {
-		console.warn("L1_RPC_URL is not set, using default.\n");
+	const {parsed} = dotenv.config({
+		path: envFilePath,
+	});
+	const getVar = (key: string, noDefault?: boolean): string | undefined => {
+		const pv = parsed ? parsed[key] : null
+		const value = pv || process.env[key]
+		if (!value) {
+			console.warn(`${key} is not set${noDefault ? "" : ", using default"}`);
+			if (noDefault) {
+				throw new Error(`${key} must be set`);
+			}
+		}
+		return value
 	}
-	if (!process.env.SUAVE_RPC_URL) {
-		console.warn("SUAVE_RPC_URL is not set, using default.\n");
-	}
+	const L1_CHAIN_ID = parseInt(getVar("L1_CHAIN_ID") || "17000");
+	const L1_KEY = prefix0x(getVar("L1_KEY", true));
+	const SUAVE_KEY = prefix0x(getVar("SUAVE_KEY", true));
+
 	const L1_RPC_URL =
-		process.env.L1_RPC_URL || "http://rpc-holesky.flashbots.net"
-	const SUAVE_RPC_URL = process.env.SUAVE_RPC_URL || "https://rpc.rigil.suave.flashbots.net"
+		getVar("L1_RPC_URL") || "http://rpc-holesky.flashbots.net"
+	const SUAVE_RPC_URL = getVar("SUAVE_RPC_URL") || "https://rpc.rigil.suave.flashbots.net"
 
 	return {
 		L1_CHAIN_ID,

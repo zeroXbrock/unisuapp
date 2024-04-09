@@ -13,8 +13,15 @@
         "weth": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
         "dai": "0x6B175474E89094C44Da98b954EedeAC495271d0F"
     },
+    "holesky": {
+        "uniV2Router": "",
+        "uniV2Factory": "",
+        "uniV2Pair": "",
+        "weth": "",
+        "dai": ""
+    },
     "suave": {
-        "intentRouter": "0x8f21fdd6b4f4cacd33151777a46c122797c8bf17",
+        "intentRouter": "0xd8c2f63fead30d92737ccf00d0ee7a14c648ff97",
         "defaultAdminKey": "0x91ab9a7e53c220e6210460b65a7a3bb2ca181412a8a7b43ff336b3df1737ce12",
         "localKettleAddress": "0xb5feafbdd752ad52afb7e1bd2e40432a485bbb7f",
         "testnetKettleAddress": "0x03493869959c866713c33669ca118e774a30a0e5"
