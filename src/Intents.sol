@@ -198,7 +198,6 @@ contract Intents {
         Suave.DataId dataId,
         TxMeta[2] memory txMeta
     ) public returns (bytes memory suaveCallData) {
-        // ensure we're computing in the enclave (is this required here?)
         require(Suave.isConfidential(), "not confidential");
 
         LimitOrderPublic memory order = intentsPending[orderId];
