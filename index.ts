@@ -198,16 +198,17 @@ async function testIntents<T extends Transport>(
 	console.log("targeting blockNumber", targetBlock);
 
 	// tx params for L1 txs
+	const l1GasPrice = await l1Provider.getGasPrice();
 	const txMetaApprove = new TxMeta()
 		.withChainId(config.L1_CHAIN_ID)
 		.withNonce(nonce)
 		.withGas(70000n)
-		.withGasPrice(10000000000n);
+		.withGasPrice(l1GasPrice + 2500000000n);
 	const txMetaSwap = new TxMeta()
 		.withChainId(config.L1_CHAIN_ID)
 		.withNonce(nonce + 1)
 		.withGas(200000n)
-		.withGasPrice(50000000000n);
+		.withGasPrice(l1GasPrice + 2500000000n);
 
 	const fulfillIntent = new FulfillIntentRequest(
 		{
