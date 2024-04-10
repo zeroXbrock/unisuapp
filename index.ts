@@ -7,7 +7,8 @@ import {
 } from "./intents-lib/limitOrder";
 import { SuaveRevert } from "./intents-lib/suaveError";
 import { chainContext, getWeth } from "./intents-lib/utils";
-import ChainContext from "./rigil.json";
+const ADDRESS_FILE = "./addresses.json";
+import ChainContext from "./addresses.json";
 import {
 	type Hex,
 	type Transport,
@@ -41,6 +42,9 @@ import {
 import { privateKeyToAccount } from "@flashbots/suave-viem/accounts";
 import fs from "fs/promises";
 
+const isLocal = ["localhost", "127.0.0.1", "http://"].map((s) =>
+	config.SUAVE_RPC_URL.includes(s)).reduce((acc, cur) => acc || cur, false)
+
 async function testIntents<T extends Transport>(
 	_suaveWallet: SuaveWallet<T>,
 	suaveProvider: SuaveProvider<T>,
@@ -54,13 +58,20 @@ async function testIntents<T extends Transport>(
 	const intentRouterAddress = process.env.DEPLOY
 		? await (async () => {
 				const address = await deployIntentRouter(_suaveWallet, suaveProvider)
-				// replace address in rigil.json
+				// replace address in file
 				const newConfig = ChainContext
-				newConfig.suave.intentRouter = address
-				fs.writeFile("./rigil.json", JSON.stringify(newConfig, null, 4))
+				if (isLocal) {
+					newConfig.suave.local.intentRouter = address
+				} else {
+					newConfig.suave.rigil.intentRouter = address
+				}
+				fs.writeFile(ADDRESS_FILE, JSON.stringify(newConfig, null, 4))
                 return address
 		  })()
-		: (ChainContext.suave.intentRouter as Hex);
+		: (isLocal ?
+			ChainContext.suave.local :
+			ChainContext.suave.rigil
+		).intentRouter as Hex;
 
 	const l1Wallet = createWalletClient({
 		account: privateKeyToAccount(l1Key),
@@ -287,11 +298,6 @@ async function main() {
 			"SUAVE_KEY is not set, using default. Your SUAVE request may not land.\nTo fix, update .env in the project root.\n",
 		);
 	}
-	console.log("config", {
-		...config,
-		// L1_KEY: "hidden",
-		// SUAVE_KEY: "hidden",
-	});
 	const l1Context = chainContext(config.L1_CHAIN_ID);
 	if (!l1Context) {
 		throw new Error("invalid chain id");
@@ -336,14 +342,10 @@ async function main() {
 			}),
 		})
 	).data;
-
-	console.log("wethBalanceRes", wethBalanceRes)
-
 	if (!wethBalanceRes) {
 		throw new Error("failed to get WETH balance");
 	}
 	const wethBalance = hexToBigInt(wethBalanceRes);
-
 	console.log("wethBalance", formatEther(wethBalance));
 	const minBalance = parseEther("0.1");
 	if (wethBalance < minBalance) {
@@ -379,7 +381,7 @@ async function main() {
 		l1Key,
 		l1Provider,
 		l1Context,
-		(config.L1_CHAIN_ID === 17000 ? ChainContext.suave.testnetKettleAddress : ChainContext.suave.localKettleAddress) as Hex,
+		(isLocal ? ChainContext.suave.local : ChainContext.suave.rigil).kettleAddress as Hex,
 	);
 }
 

@@ -1,5 +1,5 @@
 import { type Hash, type Hex, type WalletClient, formatEther, type PublicClient } from '@flashbots/suave-viem'
-import ChainContext from "../rigil.json";
+import ChainContext from "../addresses.json";
 import { getL1ChainDefinition } from './env';
 
 export const ETH = 1000000000000000000n
