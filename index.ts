@@ -45,6 +45,31 @@ import fs from "fs/promises";
 const isLocal = ["localhost", "127.0.0.1", "http://"].map((s) =>
 	config.SUAVE_RPC_URL.includes(s)).reduce((acc, cur) => acc || cur, false)
 
+function getUrls (
+	chainId: number,
+	local: boolean,
+): { bundleRpc: string; ethRpc: string } {
+	const flashbotsBundleRpc = (name: string) =>
+		`https://relay-${name}.flashbots.net`;
+	const flashbotsRpc = (name?: string) => {
+		let realName = name;
+		if (name === "mainnet") {
+			realName = "";
+		}
+		return `https://rpc${realName ? `-${realName}` : ""}.flashbots.net`;
+	};
+
+	const chainName =
+		chainId === 1 ? "mainnet" :
+		chainId === 5 ? "goerli" :
+		chainId === 17000 ? "holesky" :
+		"";
+	return {
+		bundleRpc: flashbotsBundleRpc(chainName),
+		ethRpc: local ? "http://localhost:8555" : flashbotsRpc(chainName),
+	};
+}
+
 async function testIntents<T extends Transport>(
 	_suaveWallet: SuaveWallet<T>,
 	suaveProvider: SuaveProvider<T>,
@@ -57,16 +82,16 @@ async function testIntents<T extends Transport>(
 	// `DEPLOY=true bun run index.ts`
 	const intentRouterAddress = process.env.DEPLOY
 		? await (async () => {
-				const address = await deployIntentRouter(_suaveWallet, suaveProvider)
-				// replace address in file
-				const newConfig = ChainContext
-				if (isLocal) {
-					newConfig.suave.local.intentRouter = address
-				} else {
-					newConfig.suave.rigil.intentRouter = address
-				}
-				fs.writeFile(ADDRESS_FILE, JSON.stringify(newConfig, null, 4))
-                return address
+			const address = await deployIntentRouter(_suaveWallet, suaveProvider, getUrls(config.L1_CHAIN_ID, isLocal))
+			// replace address in file
+			const newConfig = ChainContext
+			if (isLocal) {
+				newConfig.suave.local.intentRouter = address
+			} else {
+				newConfig.suave.rigil.intentRouter = address
+			}
+			fs.writeFile(ADDRESS_FILE, JSON.stringify(newConfig, null, 4))
+			return address
 		  })()
 		: (isLocal ?
 			ChainContext.suave.local :

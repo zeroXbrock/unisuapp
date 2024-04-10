@@ -25,13 +25,13 @@ export interface ILimitOrder {
     senderKey: Hex
 }
 
-export async function deployIntentRouter<T extends Transport>(wallet: SuaveWallet<T>, provider: SuaveProvider<T>): Promise<Address> {
+export async function deployIntentRouter<T extends Transport>(wallet: SuaveWallet<T>, provider: SuaveProvider<T>, l1Urls: {bundleRpc: string, ethRpc: string}): Promise<Address> {
     // deploy IntentRouter
     console.log("deploying IntentRouter")
     const deployContractTxHash = await wallet.deployContract({
         abi: IntentsContract.abi,
         bytecode: IntentsContract.bytecode.object as Hex,
-        
+        args: [l1Urls.bundleRpc, l1Urls.ethRpc],
     })
     const deployContractReceipt = await provider.waitForTransactionReceipt({ hash: deployContractTxHash })
     console.log("FINISHED deploying IntentRouter")

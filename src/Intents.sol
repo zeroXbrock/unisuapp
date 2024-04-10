@@ -39,9 +39,9 @@ contract Intents {
     // we probably shouldn't be storing intents in contract storage
     // TODO: make a stateless or ConfidentialStore-based design
     mapping(bytes32 => LimitOrderPublic) public intentsPending;
-    string public constant L1_BUNDLE_RPC =
-        "https://relay-mainnet.flashbots.net";
-    string public constant L1_ETH_RPC = "https://rpc.flashbots.net";
+    string public L1_BUNDLE_RPC;
+    string public L1_ETH_RPC;
+
     bytes2 public constant TX_PLACEHOLDER = 0xf00d;
     uint8 private immutable NUM_TARGET_BLOCKS = 10;
 
@@ -56,6 +56,11 @@ contract Intents {
     );
     //TODO: event IntentFulfillmentRequested(bytes32 orderId, bytes bundleRes);
     event IntentFulfilled(bytes32 orderId, bytes receiptRes);
+
+    constructor(string memory l1BundleRpc, string memory l1EthRpc) {
+        L1_BUNDLE_RPC = l1BundleRpc;
+        L1_ETH_RPC = l1EthRpc;
+    }
 
     fallback() external {
         emit Test(0x9001);
