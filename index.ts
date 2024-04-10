@@ -365,11 +365,11 @@ async function main() {
 					break
 				}
 			} catch (_) {
-				if (attempts > 13) {
+				if (attempts > 5) {
 					throw new Error("tx failed to land")
 				}
 				attempts++
-				await new Promise((resolve) => setTimeout(resolve, 1000))
+				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
 			}
 		}
 	}
