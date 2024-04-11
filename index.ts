@@ -1,13 +1,14 @@
 import IntentsContract from "./out/Intents.sol/Intents.json";
-import config from "./intents-lib/env";
+import config, { getL1ChainDefinition } from "./intents-lib/env";
 import { Bundle, FulfillIntentRequest, TxMeta } from "./intents-lib/intentBundle";
 import {
 	LimitOrder,
 	deployIntentRouter, // needed if you decide to re-deploy
 } from "./intents-lib/limitOrder";
 import { SuaveRevert } from "./intents-lib/suaveError";
-import { getWeth } from "./intents-lib/utils";
-import TestnetConfig from "./rigil.json";
+import { chainContext, getWeth } from "./intents-lib/utils";
+const ADDRESS_FILE = "./addresses.json";
+import ChainContext from "./addresses.json";
 import {
 	type Hex,
 	type Transport,
@@ -38,38 +39,73 @@ import {
 	getSuaveProvider,
 	getSuaveWallet,
 } from "@flashbots/suave-viem/chains/utils";
-import { goerli, suaveRigil } from "@flashbots/suave-viem/chains";
 import { privateKeyToAccount } from "@flashbots/suave-viem/accounts";
 import fs from "fs/promises";
+
+const isLocal = ["localhost", "127.0.0.1", "http://"].map((s) =>
+	config.SUAVE_RPC_URL.includes(s)).reduce((acc, cur) => acc || cur, false)
+
+function getUrls (
+	chainId: number,
+	local: boolean,
+): { bundleRpc: string; ethRpc: string } {
+	const flashbotsBundleRpc = (name: string) =>
+		`https://relay-${name}.flashbots.net`;
+	const flashbotsRpc = (name?: string) => {
+		let realName = name;
+		if (name === "mainnet") {
+			realName = "";
+		}
+		return `https://rpc${realName ? `-${realName}` : ""}.flashbots.net`;
+	};
+
+	const chainName =
+		chainId === 1 ? "mainnet" :
+		chainId === 5 ? "goerli" :
+		chainId === 17000 ? "holesky" :
+		"";
+	return {
+		bundleRpc: flashbotsBundleRpc(chainName),
+		ethRpc: local ? "http://localhost:8555" : flashbotsRpc(chainName),
+	};
+}
 
 async function testIntents<T extends Transport>(
 	_suaveWallet: SuaveWallet<T>,
 	suaveProvider: SuaveProvider<T>,
-	goerliKey: Hex,
-	goerliProvider: PublicClient<T>,
+	l1Key: Hex,
+	l1Provider: PublicClient<T>,
+	l1Context: ReturnType<typeof chainContext>,
 	kettleAddress: Hex,
 ) {
 	// set DEPLOY=true in process.env if you want to re-deploy the IntentRouter
 	// `DEPLOY=true bun run index.ts`
 	const intentRouterAddress = process.env.DEPLOY
 		? await (async () => {
-				const address = await deployIntentRouter(_suaveWallet, suaveProvider)
-				// replace address in rigil.json
-				const newConfig = TestnetConfig
-				newConfig.suave.intentRouter = address
-				fs.writeFile("./rigil.json", JSON.stringify(newConfig, null, 4))
-                return address
+			const address = await deployIntentRouter(_suaveWallet, suaveProvider, getUrls(config.L1_CHAIN_ID, isLocal))
+			// replace address in file
+			const newConfig = ChainContext
+			if (isLocal) {
+				newConfig.suave.local.intentRouter = address
+			} else {
+				newConfig.suave.rigil.intentRouter = address
+			}
+			fs.writeFile(ADDRESS_FILE, JSON.stringify(newConfig, null, 4))
+			return address
 		  })()
-		: (TestnetConfig.suave.intentRouter as Hex);
+		: (isLocal ?
+			ChainContext.suave.local :
+			ChainContext.suave.rigil
+		).intentRouter as Hex;
 
-	const goerliWallet = createWalletClient({
-		account: privateKeyToAccount(goerliKey),
-		transport: http(config.GOERLI_RPC_URL),
+	const l1Wallet = createWalletClient({
+		account: privateKeyToAccount(l1Key),
+		transport: http(config.L1_RPC_URL),
 	});
 
 	console.log("intentRouterAddress", intentRouterAddress);
 	console.log("suaveWallet", _suaveWallet.account.address);
-	console.log("goerliWallet", goerliWallet.account.address);
+	console.log("l1Wallet", l1Wallet.account.address);
 
 	// automagically decode revert messages before throwing them
 	// TODO: build this natively into the wallet client
@@ -90,10 +126,10 @@ async function testIntents<T extends Transport>(
 			amountInMax: amountIn,
 			amountOutMin: 13n,
 			expiryTimestamp: BigInt(Math.round(new Date().getTime() / 1000) + 3600),
-			senderKey: goerliKey,
-			tokenIn: TestnetConfig.goerli.weth as Hex,
-			tokenOut: TestnetConfig.goerli.dai as Hex,
-			to: goerliWallet.account.address,
+			senderKey: l1Key,
+			tokenIn: l1Context.contracts.weth as Hex,
+			tokenOut: l1Context.contracts.dai as Hex,
+			to: l1Wallet.account.address,
 		},
 		suaveProvider,
 		intentRouterAddress,
@@ -103,6 +139,7 @@ async function testIntents<T extends Transport>(
 	console.log("orderId", limitOrder.orderId());
 
 	const tx = await limitOrder.toTransactionRequest();
+	console.log("tx", tx)
 	const limitOrderTxHash: Hex = await suaveWallet.sendTransaction(tx);
 	console.log("limitOrderTxHash", limitOrderTxHash);
 
@@ -188,25 +225,26 @@ async function testIntents<T extends Transport>(
 		throw new Error("no dataId found in logs");
 	}
 
-	// get user's latst goerli nonce
-	const nonce = await goerliProvider.getTransactionCount({
-		address: goerliWallet.account.address,
+	// get user's latest L1 nonce
+	const nonce = await l1Provider.getTransactionCount({
+		address: l1Wallet.account.address,
 	});
-	const blockNumber = await goerliProvider.getBlockNumber();
+	const blockNumber = await l1Provider.getBlockNumber();
 	const targetBlock = blockNumber + 2n;
 	console.log("targeting blockNumber", targetBlock);
 
-	// tx params for goerli txs
+	// tx params for L1 txs
+	const l1GasPrice = await l1Provider.getGasPrice();
 	const txMetaApprove = new TxMeta()
-		.withChainId(goerli.id)
+		.withChainId(config.L1_CHAIN_ID)
 		.withNonce(nonce)
 		.withGas(70000n)
-		.withGasPrice(10000000000n);
+		.withGasPrice(l1GasPrice + 2500000000n);
 	const txMetaSwap = new TxMeta()
-		.withChainId(goerli.id)
+		.withChainId(config.L1_CHAIN_ID)
 		.withNonce(nonce + 1)
 		.withGas(200000n)
-		.withGasPrice(50000000000n);
+		.withGasPrice(l1GasPrice + 2500000000n);
 
 	const fulfillIntent = new FulfillIntentRequest(
 		{
@@ -224,8 +262,21 @@ async function testIntents<T extends Transport>(
 	console.log("fulfillIntent txRequest", txRequest);
 
 	// send the CCR
-	const fulfillIntentTxHash = await suaveWallet.sendTransaction(txRequest);
-	console.log("fulfillIntentTxHash", fulfillIntentTxHash);
+	let fulfillIntentTxHash: Hex = "0x";
+	for (let i = 0; i < 3; i++) {
+		try {
+			fulfillIntentTxHash = await suaveWallet.sendTransaction(txRequest)
+			console.log("fulfillIntentTxHash", fulfillIntentTxHash)
+			break
+		} catch (_) {
+			console.warn("failed to send fulfillIntent tx, retrying...")
+			// sleep for 1 second
+			await new Promise((resolve) => setTimeout(resolve, 1000))
+		}
+	}
+	if (fulfillIntentTxHash === "0x") {
+		throw new Error("failed to send fulfillIntent tx");
+	}
 
 	// wait for tx receipt, then log it
 	const fulfillIntentReceipt = await suaveProvider.waitForTransactionReceipt({
@@ -262,9 +313,9 @@ async function testIntents<T extends Transport>(
 }
 
 async function main() {
-	if (!config.GOERLI_KEY) {
+	if (!config.L1_KEY) {
 		console.warn(
-			"GOERLI_KEY is not set, using default. Your bundle will not land.\nTo fix, update .env in the project root.\n",
+			"L1_KEY is not set, using default. Your bundle will not land.\nTo fix, update .env in the project root.\n",
 		);
 	}
 	if (!config.SUAVE_KEY) {
@@ -272,68 +323,90 @@ async function main() {
 			"SUAVE_KEY is not set, using default. Your SUAVE request may not land.\nTo fix, update .env in the project root.\n",
 		);
 	}
+	const l1Context = chainContext(config.L1_CHAIN_ID);
+	if (!l1Context) {
+		throw new Error("invalid chain id");
+	}
 	// get a suave wallet & provider, connected to rigil testnet
 	const suaveWallet = getSuaveWallet({
 		privateKey: (config.SUAVE_KEY ||
-			TestnetConfig.suave.defaultAdminKey) as Hex,
-		transport: http(suaveRigil.rpcUrls.default.http[0]),
+			ChainContext.suave.defaultAdminKey) as Hex,
+		transport: http(config.SUAVE_RPC_URL),
 	});
 	console.log("suaveWallet", suaveWallet.account.address);
 	const suaveProvider = getSuaveProvider(
-		http(suaveRigil.rpcUrls.default.http[0]),
+		http(config.SUAVE_RPC_URL),
 	);
 
-	// goerli signer; separate from suaveWallet; only funded on goerli
-	const goerliKEY = (config.GOERLI_KEY ||
+	// L1 signer & provider
+	const l1Key = (config.L1_KEY ||
 		"0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80") as Hex;
-	const goerliWallet = createWalletClient({
-		account: privateKeyToAccount(goerliKEY),
-		transport: http(config.GOERLI_RPC_URL),
+	const l1Wallet = createWalletClient({
+		account: privateKeyToAccount(l1Key),
+		transport: http(config.L1_RPC_URL),
 	});
-	const goerliProvider = createPublicClient({
-		chain: goerli,
-		transport: http(config.GOERLI_RPC_URL),
+	const l1Provider = createPublicClient({
+		chain: getL1ChainDefinition(),
+		transport: http(config.L1_RPC_URL),
 	});
-	console.log("goerliWallet", goerliWallet.account.address);
+	console.log("l1Wallet", l1Wallet.account.address);
+	console.log("L1 blockNum", await l1Provider.getBlockNumber())
+	console.log(config.L1_RPC_URL)
 
-	// get goerli weth balance, top up if needed
+	// get L1 weth balance, top up if needed
 	const wethBalanceRes = (
-		await goerliProvider.call({
-			account: goerliWallet.account.address,
-			to: TestnetConfig.goerli.weth as Hex,
+		await l1Provider.call({
+			account: l1Wallet.account.address,
+			to: l1Context.contracts.weth as Hex,
 			data: encodeFunctionData({
 				functionName: "balanceOf",
-				args: [goerliWallet.account.address],
+				args: [l1Wallet.account.address],
 				abi: parseAbi([
 					"function balanceOf(address) public view returns (uint256)",
 				]),
 			}),
 		})
 	).data;
-
 	if (!wethBalanceRes) {
 		throw new Error("failed to get WETH balance");
 	}
 	const wethBalance = hexToBigInt(wethBalanceRes);
-
 	console.log("wethBalance", formatEther(wethBalance));
 	const minBalance = parseEther("0.1");
 	if (wethBalance < minBalance) {
-		console.log("topping up WETH");
-		const txHash = await getWeth(minBalance, goerliWallet);
-		console.log(`got ${minBalance} weth`, txHash);
+		console.log("topping up WETH")
+		const txHash = await getWeth(minBalance, l1Wallet, l1Provider, l1Context)
+		console.log(`got ${minBalance} weth`, txHash)
 		// wait for 12 seconds for the tx to land
-		console.log("waiting for 12 seconds for tx to land on goerli");
-		await new Promise((resolve) => setTimeout(resolve, 12000));
+		console.log("waiting for tx to land on L1...")
+		let attempts = 0
+		while (true) {
+			try {
+				const receipt = await l1Provider.getTransactionReceipt({
+					hash: txHash,
+				})
+				if (receipt.status === "success") {
+					console.log("tx landed")
+					break
+				}
+			} catch (_) {
+				if (attempts > 5) {
+					throw new Error("tx failed to land")
+				}
+				attempts++
+				await new Promise((resolve) => setTimeout(resolve, attempts * 1000))
+			}
+		}
 	}
 
 	// run test script
 	await testIntents(
 		suaveWallet,
 		suaveProvider,
-		goerliKEY,
-		goerliProvider,
-		TestnetConfig.suave.testnetKettleAddress as Hex,
+		l1Key,
+		l1Provider,
+		l1Context,
+		(isLocal ? ChainContext.suave.local : ChainContext.suave.rigil).kettleAddress as Hex,
 	);
 }
 
